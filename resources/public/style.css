@@ -1,0 +1,34 @@
+.admin {
+  background: oklch(0.8 0.3 300 / 0.3);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1ch;
+  font-family: sans-serif;
+  padding: 1ch;
+}
+
+.tags > * {
+  background: oklch(0.8 0 0);
+  padding: 1ch;
+  border-radius: 1ch;
+  text-decoration: none;
+  color: oklch(0.2 0 0);
+}
+
+#compare {
+  padding: 1ch;
+}
+
+.yt-player {
+  width: 100%;
+  aspect-ratio: 16/9;
+}
+
+.h {
+  display: flex;
+  gap: 1ch;
+  align-items: center;
+}
