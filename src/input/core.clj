@@ -475,7 +475,7 @@
                                                 :tags (conjs (get-in st [:videos :id->video yt-id :tags]) (:tag params)))
                                    ;; TODO only make entry when tag is new in used-tags
                                    (make-entry! :user user-id :id user-id
-                                                :used-tags (conjs (get-in st [:user :id->user user-id :used-tags]) (:tag params)))]))
+                                                :used-tags (conjs (get-in st [:users :id->user user-id :used-tags]) (:tag params)))]))
                      (response (str (h2/html (tags (:yt-id params) user-id))))))}]
          ["remove-tag"
           {:post (fn [{:keys [user-id params]}]
