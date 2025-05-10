@@ -218,7 +218,11 @@
              [:script {:src "https://unpkg.com/htmx.org@2.0.4"
                        :integirty "sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"}]]
             [:body #_{:hx-boost "true"}
-             [:a {:href "/"} "home"]
+             [:div.header
+              [:a {:href "/"} "home"]
+              [:form.h {:method "POST" :action "/add"}
+               [:input {:type "text" :name "url" :placeholder "https://www.youtube.com/watch?v=..."}]
+               [:button "Add video"]]]
              [:div
               body]
              [:div "Please send feedback and questions to "
@@ -237,7 +241,7 @@
 
 (defn video-list [vs & {:as opts}]
   (for [video vs]
-    [:a {:href (cond-> (str "/watch/" (:yt/id video))
+    [:a.video-link {:href (cond-> (str "/watch/" (:yt/id video))
                  (:context opts) (str "?" (:context opts)))}
      [:div {:style {:display "grid"
                     :grid-template-areas "\"stack\""}}
@@ -279,10 +283,12 @@
        [:form
         [:input {:type "hidden" :name "yt-id" :value yt-id}]
         [:input {:type "hidden" :name "tag" :value tag}]
-        [:span {:hx-post "/remove-tag"
+        [:div.remove {:hx-post "/remove-tag"
                 :hx-target "#tags"}
-         (hu/escape-html tag) " X"]])
-     [:form
+         "remove "
+         [:span.tag
+          (hu/escape-html tag)]]])
+     [:form.h
       [:datalist {:id "tags-list"}
        (for [tag (-> @!state
                      :videos
@@ -415,9 +421,6 @@
 (defn front-page [user-id]
   (let [st (get-video-state)]
     [:div
-     [:form {:method "POST" :action "/add"}
-      [:input {:type "text" :name "url" :placeholder "https://www.youtube.com/watch?v=..."}]
-      [:button "Add video"]]
      (tags-list (filter (approved-tags-for-user user-id) (keys (:tag->ids st))))
      [:div {:style {:display "grid"
                     :gap "1em"
