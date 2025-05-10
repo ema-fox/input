@@ -220,7 +220,10 @@
             [:body #_{:hx-boost "true"}
              [:a {:href "/"} "home"]
              [:div
-              body]])))
+              body]
+             [:div "Please send feedback and questions to "
+              [:a {:href "mailto:ema@mailbox.org"}
+               "ema@mailbox.org"]]])))
 
 (defn half-compare [this-id other-id]
   [:form
