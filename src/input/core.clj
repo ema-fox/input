@@ -213,7 +213,7 @@
    (p/html5 {:encoding "UTF-8" :xml? true}
             [:head
              [:title "Comprehensible Input"]
-             [:link {:rel "stylesheet" :href "/asset/style.css"}]
+             [:link {:rel "stylesheet" :href "/asset/style.css?"}]
              [:link {:rel "icon" :href "/asset/favicon.png"}]
              [:script {:src "https://unpkg.com/htmx.org@2.0.4"
                        :integirty "sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"}]]
@@ -326,8 +326,8 @@
 
 (defn watch [user-id yt-id side-videos & {:as opts}]
   (let [video (get-video yt-id)]
-    [:div.h {:style {:display "flex"}}
-     [:div {:style {:flex-grow "1"}}
+    [:div.h {:style {:justify-content "space-around"}}
+     [:div
       [:iframe.yt-player
        {:src (str "https://www.youtube.com/embed/" yt-id)
         :allowfullscreen true}]

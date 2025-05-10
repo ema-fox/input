@@ -51,6 +51,7 @@ input, button {
 
 .yt-player {
   width: 100%;
+  max-width: 900px;
   aspect-ratio: 16/9;
 }
 
