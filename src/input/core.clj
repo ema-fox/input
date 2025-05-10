@@ -334,7 +334,7 @@
           [:div
            [:div#compare
             "Which did you find more difficult?"
-            [:div.h
+            [:div.h.center-items
              (half-compare lw1 lw2)
              "or"
              (half-compare lw2 lw1)]]]))]

@@ -30,5 +30,8 @@
 .h {
   display: flex;
   gap: 1ch;
+}
+
+.center-items {
   align-items: center;
 }
