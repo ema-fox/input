@@ -1,14 +1,23 @@
-.header {
+body {
   font-size: 1.3em;
+}
+
+.header {
   display: flex;
   gap: 1ch;
   justify-content: space-between;
   margin-bottom: 1ch;
 }
 
+input, button {
+  font-size: 1.3em
+}
+
+/*
 .header input, .header button, #tags input, #tags button {
   font-size: 1.3em
 }
+*/
 
 .header button, #tags button {
   padding-left: 2ch;
@@ -58,6 +67,8 @@
 .video-link {
   display: block;
   width: 480px;
+  text-decoration: none;
+  margin: 1ch 0ch;
 }
 
 .remove {

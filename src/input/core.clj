@@ -255,7 +255,7 @@
                       :padding "0.5ch"
                       :border-radius "0.5ch"}}
         (str (int (:de/score video START-SCORE)))]]]
-     [:h4
+     [:div
       (hu/escape-html (:yt/title video))]]))
 
 (defn tags-list [tags]
