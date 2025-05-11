@@ -120,11 +120,16 @@
            (update st :users ingest-user u))
    :tag (fn [st t]
           (update st :tags ingest-tag t))
+   :user-tag-settings (fn [st uts]
+                        [{:kind :user
+                          :id (:user-id uts)
+                          :tag-settings (assoc (get-in st [:users :id->user (:user-id uts) :tag-settings])
+                                               (:tag uts) uts)}])
    :do/make-admin (fn [st {:keys [user-id]}]
                     [{:kind :user
-                                :id user-id
-                                :roles (conjs (get-in st [:users :id->user user-id :roles])
-                                              :admin)}])})
+                      :id user-id
+                      :roles (conjs (get-in st [:users :id->user user-id :roles])
+                                    :admin)}])})
 
 (defn ingest [st entry]
   (let [res ((ingesters (:kind entry)) st entry)]
@@ -239,6 +244,11 @@
 
    [:img {:src (str "https://img.youtube.com/vi/" this-id "/hqdefault.jpg")}]]])
 
+(defn tags-list-inert [tags]
+  [:div.tags
+   (for [tag (sort tags)]
+     [:div tag])])
+
 (defn video-list [vs & {:as opts}]
   (for [video vs]
     [:a.video-link {:href (cond-> (str "/watch/" (:yt/id video))
@@ -256,7 +266,9 @@
                       :border-radius "0.5ch"}}
         (str (int (:de/score video START-SCORE)))]]]
      [:div
-      (hu/escape-html (:yt/title video))]]))
+      (hu/escape-html (:yt/title video))]
+     (let [tag-settings (get-in @!state [:users :id->user (:user-id opts) :tag-settings])]
+       (tags-list-inert (filter #(get-in tag-settings [% :show-on-card?]) (:tags video))))]))
 
 (defn tags-list [tags]
   [:div.tags
@@ -348,7 +360,7 @@
              "or"
              (half-compare lw2 lw1)]]]))]
      [:div
-      (video-list side-videos opts)]]))
+      (video-list side-videos :user-id user-id opts)]]))
 
 (defn get-channel-videos [ch-id]
   (let [st (get-video-state)]
@@ -356,16 +368,30 @@
          (map (:id->video st))
          (sort-by :de/score))))
 
-(defn channel [ch-id]
+(defn channel [ch-id user-id]
   (video-list (get-channel-videos ch-id)
+              :user-id user-id
               :context (str "channel=" ch-id)))
 
-(defn tag [tag]
+(defn user-tag-settings-form [tag user-id]
+  [:form
+   [:input {:type "hidden" :name "tag" :value tag}]
+   [:label
+    [:input {:type "checkbox" :name "show-on-card"
+             :checked (get-in @!state [:users :id->user user-id :tag-settings tag :show-on-card?])
+             :hx-trigger "change"
+             :hx-post "/user-tag-settings"}]
+    " show tag on video cards"]])
+
+(defn tag [tag user-id]
   (let [st (get-video-state)]
-    (video-list (->> (get (:tag->ids st) tag)
-                     (map (:id->video st))
-                     (sort-by :de/score))
-                :context (str "tag=" tag))))
+    [:div
+     (user-tag-settings-form tag user-id)
+     (video-list (->> (get (:tag->ids st) tag)
+                      (map (:id->video st))
+                      (sort-by :de/score))
+                 :user-id user-id
+                 :context (str "tag=" tag))]))
 
 (defn admin?
   ([user-id]
@@ -425,7 +451,8 @@
      [:div {:style {:display "grid"
                     :gap "1em"
                     :grid-template-columns "repeat(auto-fill, 500px)"}}
-      (video-list (sort-by :de/score (vals (:id->video st))))]]))
+      (video-list (sort-by :de/score (vals (:id->video st)))
+                  :user-id user-id)]]))
 
 (defn wrap-user-id [handler]
   (fn [req]
@@ -501,10 +528,16 @@
                                            (:tag params) {:context (str "tag=" (:tag params))})))))}]
          ["channel/:ch-id"
           {:get  (fn [{:keys [user-id path-params]}]
-                   (page user-id (channel (:ch-id path-params))))}]
+                   (page user-id (channel (:ch-id path-params) user-id)))}]
          ["tag/:tag"
           {:get  (fn [{:keys [user-id path-params]}]
-                   (page user-id (tag (:tag path-params))))}]
+                   (page user-id (tag (:tag path-params) user-id)))}]
+         ["user-tag-settings"
+          {:post (fn [{:keys [user-id params]}]
+                   (log! :user-tag-settings user-id :user-id user-id
+                         :tag (:tag params)
+                         :show-on-card? (= "on" (:show-on-card params)) )
+                   (response (str (h2/html (user-tag-settings-form tag user-id)))))}]
          ["asset/*"
           (create-resource-handler)]
       ])
