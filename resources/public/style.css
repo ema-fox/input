@@ -81,3 +81,11 @@ input, button {
   cursor: pointer;
   margin: 0.5ch;
 }
+
+.prioritized {
+  background: oklch(0.9 0.2 230 / 0.2);
+}
+
+.block {
+  display: block
+}

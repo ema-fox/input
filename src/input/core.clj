@@ -51,6 +51,10 @@
           m
           m2))
 
+(defn bifurcate-by [p xs]
+  (let [{as true bs false} (group-by (comp boolean p) xs)]
+    [as bs]))
+
 (defn fancy-merge [base raw]
   (let [cooked (dissoc raw :meta/update)]
     (-> base
@@ -120,11 +124,24 @@
            (update st :users ingest-user u))
    :tag (fn [st t]
           (update st :tags ingest-tag t))
-   :user-tag-settings (fn [st uts]
-                        [{:kind :user
-                          :id (:user-id uts)
-                          :tag-settings (assoc (get-in st [:users :id->user (:user-id uts) :tag-settings])
-                                               (:tag uts) uts)}])
+   :user-tag-settings (fn [st {:keys [user-id tag influence] :as uts}]
+                        [(-> (get-in st [:users :id->user user-id])
+                             (update :tags-shown-on-card
+                                     (if (:show-on-card? uts)
+                                       conjs
+                                       disj)
+                                     tag)
+                             (update :tags-prioritize
+                                     (if (= :prioritize influence)
+                                       conjs
+                                       disj)
+                                     tag)
+                             (update :tags-hide
+                                     (if (= :hide influence)
+                                       conjs
+                                       disj)
+                                     tag)
+                             (assoc-in [:tag-settings tag] uts))])
    :do/make-admin (fn [st {:keys [user-id]}]
                     [{:kind :user
                       :id user-id
@@ -249,26 +266,34 @@
    (for [tag (sort tags)]
      [:div tag])])
 
+(defn video-card [user opts video]
+  [:a.video-link {:class (when (some (set (:tags-prioritize user)) (:tags video))
+                           [:prioritized])
+                  :href (cond-> (str "/watch/" (:yt/id video))
+                          (:context opts) (str "?" (:context opts)))}
+   [:div {:style {:display "grid"
+                  :grid-template-areas "\"stack\""}}
+    [:img {:src (str "https://img.youtube.com/vi/" (:yt/id video) "/hqdefault.jpg")
+           :style {:grid-area  "stack" } }]
+    [:div {:style {#_#_:position "absolute"
+                   :grid-area  "stack"}}
+     [:div {:style {:background "white"
+                    :width "fit-content"
+                    :margin "1ch"
+                    :padding "0.5ch"
+                    :border-radius "0.5ch"}}
+      (str (int (:de/score video START-SCORE)))]]]
+   [:div
+    (hu/escape-html (:yt/title video))]
+   (tags-list-inert (filter (set (:tags-shown-on-card user)) (:tags video)))])
+
 (defn video-list [vs & {:as opts}]
-  (for [video vs]
-    [:a.video-link {:href (cond-> (str "/watch/" (:yt/id video))
-                 (:context opts) (str "?" (:context opts)))}
-     [:div {:style {:display "grid"
-                    :grid-template-areas "\"stack\""}}
-      [:img {:src (str "https://img.youtube.com/vi/" (:yt/id video) "/hqdefault.jpg")
-             :style {:grid-area  "stack" } }]
-      [:div {:style {#_#_:position "absolute"
-                     :grid-area  "stack"}}
-       [:div {:style {:background "white"
-                      :width "fit-content"
-                      :margin "1ch"
-                      :padding "0.5ch"
-                      :border-radius "0.5ch"}}
-        (str (int (:de/score video START-SCORE)))]]]
-     [:div
-      (hu/escape-html (:yt/title video))]
-     (let [tag-settings (get-in @!state [:users :id->user (:user-id opts) :tag-settings])]
-       (tags-list-inert (filter #(get-in tag-settings [% :show-on-card?]) (:tags video))))]))
+  (let [user (get-in @!state [:users :id->user (:user-id opts)])
+        [as bs] (->> vs
+                     (remove #(some (set (:tags-hide user)) (:tags %)))
+                     (bifurcate-by #(some (set (:tags-prioritize user)) (:tags %))))]
+    (list (map (partial video-card user opts) as)
+          (map (partial video-card user opts) bs))))
 
 (defn tags-list [tags]
   [:div.tags
@@ -374,14 +399,40 @@
               :context (str "channel=" ch-id)))
 
 (defn user-tag-settings-form [tag user-id]
-  [:form
-   [:input {:type "hidden" :name "tag" :value tag}]
-   [:label
-    [:input {:type "checkbox" :name "show-on-card"
-             :checked (get-in @!state [:users :id->user user-id :tag-settings tag :show-on-card?])
-             :hx-trigger "change"
-             :hx-post "/user-tag-settings"}]
-    " show tag on video cards"]])
+  (let [{:keys [show-on-card? influence]}  (get-in @!state [:users :id->user user-id :tag-settings tag])]
+    [:form
+     [:input {:type "hidden" :name "tag" :value tag}]
+     [:label
+      [:input {:type "checkbox" :name "show-on-card"
+               :checked show-on-card?
+               :hx-trigger "change"
+               :hx-post "/user-tag-settings"}]
+      " show tag on video cards"]
+     [:div
+      [:label.block
+       [:input {:type "radio" :name "influence"
+                :autocomplete "off"
+                :checked (= :prioritize influence)
+                :value "prioritize"
+                :hx-trigger "change"
+                :hx-post "/user-tag-settings" }]
+       " prioritize videos with this tag"]
+      [:label.block
+       [:input {:type "radio" :name "influence"
+                :autocomplete "off"
+                :checked (not influence)
+                :value "none"
+                :hx-trigger "change"
+                :hx-post "/user-tag-settings"}]
+       " default"]
+      [:label.block
+       [:input {:type "radio" :name "influence"
+                :autocomplete "off"
+                :checked (= :hide influence)
+                :value "hide"
+                :hx-trigger "change"
+                :hx-post "/user-tag-settings"}]
+       " hide videos with this tag"]]]))
 
 (defn tag [tag user-id]
   (let [st (get-video-state)]
@@ -536,7 +587,11 @@
           {:post (fn [{:keys [user-id params]}]
                    (log! :user-tag-settings user-id :user-id user-id
                          :tag (:tag params)
-                         :show-on-card? (= "on" (:show-on-card params)) )
+                         :show-on-card? (= "on" (:show-on-card params))
+                         :influence (case (:influence params)
+                                      "none" nil
+                                      "prioritize" :prioritize
+                                      "hide" :hide))
                    (response (str (h2/html (user-tag-settings-form tag user-id)))))}]
          ["asset/*"
           (create-resource-handler)]
