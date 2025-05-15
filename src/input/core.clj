@@ -387,7 +387,9 @@
          (for [[short long] [[nil "Other"]
                              [:es "Spanish"]
                              [:en "English"]]]
-           [:option {:value (str short)
+           [:option {:value (when short
+                              (name short)
+                              "")
                      :selected (= short (:lang video))}
             long])]]]
       [:div#tags
