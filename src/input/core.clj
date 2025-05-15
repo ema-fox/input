@@ -210,14 +210,21 @@
 
 (defn $add-video-info [yt-id by]
   (when-let [info (:youtube/snippet ($get-video-info yt-id))]
-    (log! :video by
-          :yt/id yt-id)
-    (log! :video :system
-          :yt/id yt-id
-          :yt/title (:youtube/title info)
-          :yt/channel (:youtube/channelId info))
-    (ensure-channel! (:youtube/channelId info)
-                     (:youtube/channelTitle info))))
+    (let [lang (:youtube/defaultAudioLanguage info)]
+      (log! :video by
+            :yt/id yt-id)
+      (apply log! :video :system
+             :yt/id yt-id
+             :yt/title (:youtube/title info)
+             :yt/channel (:youtube/channelId info)
+             :lang (some-> lang (subs 0 2) keyword)
+             (when-let [accent-tag (case lang
+                                     "es-MX" "accent-mexico"
+                                     "es-ES" "accent-spain"
+                                     nil)]
+               [:tags #{accent-tag}]))
+      (ensure-channel! (:youtube/channelId info)
+                       (:youtube/channelTitle info)))))
 
 (defn $ensure-video-info [yt-id by]
   (when-not (every? (or (get-video yt-id) {}) [:yt/title :yt/channel])
@@ -369,8 +376,20 @@
        {:src (str "https://www.youtube.com/embed/" yt-id)
         :allowfullscreen true}]
       [:h2 (hu/escape-html (:yt/title video))]
-      [:a {:href (str "/channel/" (:yt/channel video))}
-       [:h4 (channel-title (:yt/channel video))]]
+      [:div.h.center-items
+       [:a {:href (str "/channel/" (:yt/channel video))}
+        [:h4 (channel-title (:yt/channel video))]]
+       [:form
+        [:input {:type "hidden" :name "yt-id" :value yt-id}]
+        [:select {:name "lang"
+                  :hx-swap "none"
+                  :hx-post "/change-lang"}
+         (for [[short long] [[nil "Other"]
+                             [:es "Spanish"]
+                             [:en "English"]]]
+           [:option {:value (str short)
+                     :selected (= short (:lang video))}
+            long])]]]
       [:div#tags
        (tags yt-id user-id)]
 
@@ -539,6 +558,14 @@
           {:post (fn [{:keys [user-id params] :as x}]
                    (log! :comparison user-id :easy (:easy params) :hard (:hard params))
                    (response (str (h2/html [:div "thank you for your help."]))))}]
+         ["change-lang"
+        {:post (fn [{:keys [user-id params]}]
+                   (let [yt-id (:yt-id params)]
+                     (transact! (fn [st]
+                                  [(make-entry! :video user-id :yt/id yt-id
+                                                :lang (when (seq (:lang params))
+                                                        (keyword (:lang params))))]))
+                     (response "")))}]
          ["update-tags"
           {:get (fn [{:keys [user-id params] :as x}]
                   (response (str (h2/html (tags-form (:yt-id params) user-id)))))
