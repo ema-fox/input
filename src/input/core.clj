@@ -492,6 +492,15 @@
               " "
               [:a {:href (str "/channel/" ch)}
                (channel-title ch)]])]
+     [:div
+      [:h4 "by language"]
+      (for [[lang vs] (group-by :lang (vals (:id->video st)))]
+        [:div
+         [:h5 (hu/escape-html (str lang))]
+         (for [v vs]
+           [:div
+            [:a {:href (str "/watch/" (:yt/id v))}
+             (hu/escape-html (:yt/title v))]])])]
      (when (admin? @!state user-id)
        [:div.admin
         [:h4 "tags by number of videos"]
