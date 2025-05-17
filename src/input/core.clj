@@ -162,7 +162,9 @@
    :tag (fn [st t]
           (update st :tags ingest-tag t))
    :user-tag-settings (fn [st {:keys [user-id tag influence] :as uts}]
-                        [(-> (get-in st [:users :id->user user-id])
+                        [(-> (get-in st [:users :id->user user-id]
+                                     {:kind :user
+                                      :id user-id})
                              (update :tags-shown-on-card
                                      (if (:show-on-card? uts)
                                        conjs
