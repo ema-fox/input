@@ -186,7 +186,10 @@
                                     :admin)}])})
 
 (defn ingest [st entry]
-  (let [res ((ingesters (:kind entry)) st entry)]
+  (let [ingester (or (ingesters (:kind entry))
+                     (fn [_ entry]
+                       (throw (ex-info "no ingester found" {:entry entry}))))
+        res (ingester st entry)]
     (cond (map? res)
           res
 
