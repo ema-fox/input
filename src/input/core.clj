@@ -677,7 +677,8 @@
                                       "none" nil
                                       "prioritize" :prioritize
                                       "hide" :hide))
-                   (response (str (h2/html (user-tag-settings-form state tag)))))}]
+                   (-> (response "")
+                       (response/header "HX-Refresh" "true")))}]
          ["asset/*"
           (create-resource-handler)]
          ])
