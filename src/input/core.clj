@@ -1,6 +1,7 @@
 (ns input.core
   (:refer-clojure :exclude [read-string])
   (:require [clojure.string :as str]
+            [clojure.set :as set]
             [clojure.edn :as edn :refer [read-string]]
             [clojure.pprint :refer [pprint]]
             [clojure.data.json :as json]
@@ -12,7 +13,7 @@
             [ring.middleware.params :refer [wrap-params]]
             [ring.middleware.reload :refer [wrap-reload]]
             [ring.middleware.cookies :refer [wrap-cookies]]
-            [ring.util.response :refer [response set-cookie redirect]]
+            [ring.util.response :refer [response set-cookie redirect] :as response]
             [reitit.ring :refer [ring-handler router routes create-resource-handler create-default-handler]]
             [hiccup.page :as p]
             [hiccup2.core :as h2]
@@ -55,6 +56,45 @@
   (let [{as true bs false} (group-by (comp boolean p) xs)]
     [as bs]))
 
+(defn tree-merge [a b]
+  (cond (map? b) (merge-with tree-merge a b)
+        (set? b) (set/union a b)
+        :else b))
+
+(defn soc [m k v]
+  (if (nil? v)
+    (dissoc m k)
+    (assoc m k v)))
+
+(defn index-by
+  ([coll keyfn] (index-by coll keyfn identity))
+  ([coll keyfn valfn]
+   (into {} (map (juxt keyfn valfn)) coll)))
+
+(defn from-keys [ks f]
+  (index-by ks identity f))
+
+(defn tree-remove [a b]
+  (cond (map? b) (not-empty (reduce-kv (fn [a* k v]
+                                         (soc a* k (tree-remove (get a k) v)))
+                                       a
+                                       b))
+        (set? b) (not-empty (set/difference a b))
+        :else nil))
+
+(defn tree-difference [a b]
+  (cond (= a b) nil
+        (map? b) (not-empty (reduce-kv (fn [a* k v]
+                                         (soc a* k (tree-difference (get a k) v)))
+                                       a
+                                       b))
+        (set? b) (not-empty (set/difference a b))
+        :else a))
+
+(defn simplify-tree-diff [{:keys [add rem]}]
+  {:add (tree-difference add rem)
+   :rem (tree-difference rem add)})
+
 (defn fancy-merge [base raw]
   (let [cooked (dissoc raw :meta/update)]
     (-> base
@@ -62,16 +102,17 @@
         (updates-map conjs (:conjs (:meta/update raw)))
         (updates-map disj (:disj (:meta/update raw))))))
 
-(defn ingest-video [st {:yt/keys [id channel] :as entry}]
-  (-> st
-      (update :id->video update id fancy-merge entry)
-      (cond-> channel
-        (update :channel->ids update channel conjs id))
-      (update :tag->ids (fn [tag->ids]
-                          (let [[rem add] (set-diff (get-in st [:id->video id :tags]) (:tags entry))]
-                            (-> tag->ids
-                                (updates #(disj % id) rem)
-                                (updates #(conjs % id) add)))))))
+(defn ingest-video* [{:yt/keys [id channel] :keys [lang tags] :as entry}]
+  {:videos
+   {:id->video {id entry}
+    :lang-> {lang {:channel->ids {channel #{id}}
+                   :tag->ids (from-keys tags (constantly #{id}))}}}})
+
+(defn ingest-video [st entry]
+  (let [old (get-in st [:videos :id->video (:yt/id entry)])
+        new (merge old entry)]
+    {:add (ingest-video* new)
+     :rem (ingest-video* old)}))
 
 (defn expected-result [p1 p2]
   (let [exp (/ (- p2 p1) 400)]
@@ -116,7 +157,10 @@
 
 (def ingesters
   {:video (fn [st v]
-            (update st :videos ingest-video v))
+            (let [{:keys [add rem]} (simplify-tree-diff (ingest-video st v))]
+              (-> st
+                  (tree-remove rem)
+                  (tree-merge add))))
    :channel (fn [st ch]
               (update st :channels ingest-channel ch))
    :comparison ingest-comparison
@@ -237,6 +281,10 @@
                       (filter (comp :approved? second))
                       (map first))))))
 
+(def languages
+  [[:es "Spanish"]
+   [:en "English"]])
+
 (defn page [user-id & body]
   (response
    (p/html5 {:encoding "UTF-8" :xml? true}
@@ -249,6 +297,14 @@
             [:body #_{:hx-boost "true"}
              [:div.header
               [:a {:href "/"} "home"]
+              [:form
+               [:select {:name "lang"
+                         :hx-swap "none"
+                         :hx-post "/change-user-lang"}
+                (for [[short long] languages]
+                  [:option {:value (name short)
+                            :selected (= short (get-in @!state [:users :id->user user-id :lang]))}
+                   long])]]
               [:form.h {:method "POST" :action "/add"}
                [:input {:type "text" :name "url" :placeholder "https://www.youtube.com/watch?v=..."}]
                [:button "Add video"]]]
@@ -348,17 +404,30 @@
                 :hx-target "#tags"}
        "Add tag"]]]))
 
-(defn get-side-videos [yt-id & {:as opts}]
+(defn get-channel-videos [user ch-id]
+  (let [st (get-video-state)]
+    (->> (get-in @!state [:videos :lang-> (:lang user) :channel->ids ch-id])
+         (map (:id->video st))
+         (sort-by :de/score))))
+
+(defn get-tag-videos [user vst tag]
+  (->> (get-in @!state [:videos :lang-> (:lang user) :tag->ids tag])
+       (map (:id->video vst))
+       (sort-by :de/score)))
+
+(defn get-videos [user vst]
+  (->> (get-in vst [:lang-> (:lang user) :channel->ids])
+       vals
+       (apply concat)
+       (map (:id->video vst))
+       (sort-by :de/score)))
+
+(defn get-side-videos [yt-id & {:as opts :keys [user channel tag]}]
   (let [st (get-video-state)
         video (get-in st [:id->video yt-id])
-        videos (cond (:channel opts)
-                     (map (:id->video st) (get-in st [:channel->ids (:channel opts)]))
-
-                     (:tag opts)
-                     (map (:id->video st) (get-in st [:tag->ids (:tag opts)]))
-
-                     :else
-                     (vals (:id->video st)))
+        videos (cond channel (get-channel-videos user channel)
+                     tag (get-tag-videos user st tag)
+                     :else (get-videos user st))
         reference-score (:de/score video START-SCORE)]
       (->> videos
            (remove (comp #{yt-id} :yt/id))
@@ -367,6 +436,7 @@
 
 (defn channel-title [ch-id]
   (hu/escape-html (:yt/title (get-in @!state [:channels :id->channel ch-id]) ch-id)))
+
 
 (defn watch [user-id yt-id side-videos & {:as opts}]
   (let [video (get-video yt-id)]
@@ -384,9 +454,7 @@
         [:select {:name "lang"
                   :hx-swap "none"
                   :hx-post "/change-lang"}
-         (for [[short long] [[nil "Other"]
-                             [:es "Spanish"]
-                             [:en "English"]]]
+         (for [[short long] (cons [nil "Other"] languages)]
            [:option {:value (if short
                               (name short)
                               "")
@@ -408,14 +476,8 @@
      [:div
       (video-list side-videos :user-id user-id opts)]]))
 
-(defn get-channel-videos [ch-id]
-  (let [st (get-video-state)]
-    (->> (get (:channel->ids st) ch-id)
-         (map (:id->video st))
-         (sort-by :de/score))))
-
 (defn channel [ch-id user-id]
-  (video-list (get-channel-videos ch-id)
+  (video-list (get-channel-videos (get-in @!state [:users :id->user user-id]) ch-id)
               :user-id user-id
               :context (str "channel=" ch-id)))
 
@@ -456,12 +518,11 @@
        " hide videos with this tag"]]]))
 
 (defn tag [tag user-id]
-  (let [st (get-video-state)]
+  (let [vst (get-video-state)
+        user (get-in @!state [:users :id->user user-id])]
     [:div
      (user-tag-settings-form tag user-id)
-     (video-list (->> (get (:tag->ids st) tag)
-                      (map (:id->video st))
-                      (sort-by :de/score))
+     (video-list (get-tag-videos user vst tag)
                  :user-id user-id
                  :context (str "tag=" tag))]))
 
@@ -484,39 +545,33 @@
               " "
               [:a {:href (str "/watch/" (:yt/id v))}
                (hu/escape-html (:yt/title v))]])]
-     [:h4 "channels by number of videos"]
-     [:div (for [[ch n]  (-> (:channel->ids st)
-                             (update-vals count)
-                             (->> (sort-by second)))]
-             [:div n
-              " "
-              [:a {:href (str "/channel/" ch)}
-               (channel-title ch)]])]
-     [:div
-      [:h4 "by language"]
-      (for [[lang vs] (group-by :lang (vals (:id->video st)))]
-        [:div
-         [:h5 (hu/escape-html (str lang))]
-         (for [v vs]
-           [:div
-            [:a {:href (str "/watch/" (:yt/id v))}
-             (hu/escape-html (:yt/title v))]])])]
-     (when (admin? @!state user-id)
-       [:div.admin
-        [:h4 "tags by number of videos"]
-        (for [[t n] (-> (:tag->ids st)
-                             (update-vals count)
-                             (->> (sort-by second)))]
-               [:div.h
-                (if (get-in @!state [:tags :tag->info t :approved?])
-                  " "
-                  [:form
-                   [:input {:type "hidden" :name "tag" :value t}]
-                   [:button {:hx-post "/approve-tag"}
-                    "approve!"]])
-                n
-                [:a {:href (str "/tag/" t)}
-                 (hu/escape-html t)]])])
+     (for [[lang st*] (:lang-> st)]
+       [:div
+        [:h3 (pr-str lang)]
+        [:h4 "channels by number of videos"]
+        [:div (for [[ch n]  (-> (:channel->ids st*)
+                                (update-vals count)
+                                (->> (sort-by second)))]
+                [:div n
+                 " "
+                 [:a {:href (str "/channel/" ch)}
+                  (channel-title ch)]])]
+        (when (admin? @!state user-id)
+          [:div.admin
+           [:h4 "tags by number of videos"]
+           (for [[t n] (-> (:tag->ids st*)
+                           (update-vals count)
+                           (->> (sort-by second)))]
+             [:div.h
+              (if (get-in @!state [:tags :tag->info t :approved?])
+                " "
+                [:form
+                 [:input {:type "hidden" :name "tag" :value t}]
+                 [:button {:hx-post "/approve-tag"}
+                  "approve!"]])
+              n
+              [:a {:href (str "/tag/" t)}
+               (hu/escape-html t)]])])])
      #_
      [:div {:style {:white-space "pre"}}
       (hu/escape-html
@@ -526,13 +581,16 @@
                      (->> (sort-by second))))))]]))
 
 (defn front-page [user-id]
-  (let [st (get-video-state)]
+  (let [st (get-video-state)
+        user (get-in @!state [:users :id->user user-id])]
     [:div
-     (tags-list (filter (approved-tags-for-user user-id) (keys (:tag->ids st))))
+     (tags-list (->> (get-in @!state [:videos :lang-> (:lang user) :tag->ids])
+                     keys
+                     (filter (approved-tags-for-user user-id))))
      [:div {:style {:display "grid"
                     :gap "1em"
                     :grid-template-columns "repeat(auto-fill, 500px)"}}
-      (video-list (sort-by :de/score (vals (:id->video st)))
+      (video-list (get-videos user st)
                   :user-id user-id)]]))
 
 (defn wrap-user-id [handler]
@@ -569,8 +627,13 @@
           {:post (fn [{:keys [user-id params] :as x}]
                    (log! :comparison user-id :easy (:easy params) :hard (:hard params))
                    (response (str (h2/html [:div "thank you for your help."]))))}]
+         ["change-user-lang"
+          {:post (fn [{:keys [user-id params]}]
+                   (log! :user user-id :id user-id :lang (keyword (:lang params)))
+                   (-> (response "")
+                       (response/header "HX-Refresh" "true")))}]
          ["change-lang"
-        {:post (fn [{:keys [user-id params]}]
+          {:post (fn [{:keys [user-id params]}]
                    (let [yt-id (:yt-id params)]
                      (transact! (fn [st]
                                   [(make-entry! :video user-id :yt/id yt-id
@@ -581,8 +644,8 @@
           {:get (fn [{:keys [user-id params] :as x}]
                   (response (str (h2/html (tags-form (:yt-id params) user-id)))))
            #_#_:post (fn [{:keys [user-id params]}]
-                   (log! :video user-id :yt/id (:yt-id params) :tags (set (str/split (str/trim (:tags params)) #"\s+")))
-                   (response (str (h2/html (tags (:yt-id params))))))}]
+                       (log! :video user-id :yt/id (:yt-id params) :tags (set (str/split (str/trim (:tags params)) #"\s+")))
+                       (response (str (h2/html (tags (:yt-id params))))))}]
          ["add-tag"
           {:post (fn [{:keys [user-id params]}]
                    (let [yt-id (:yt-id params)]
@@ -610,6 +673,7 @@
                   (let [yt-id (:yt-id path-params)]
                     (swap! !last-watched update user-id (comp (partial take 2) distinct conj) yt-id)
                     (page user-id (watch user-id yt-id (get-side-videos yt-id
+                                                                        :user (get-in @!state [:users :id->user user-id])
                                                                         :channel (:channel params)
                                                                         :tag (:tag params))
                                          (cond
@@ -633,7 +697,7 @@
                    (response (str (h2/html (user-tag-settings-form tag user-id)))))}]
          ["asset/*"
           (create-resource-handler)]
-      ])
+         ])
        (routes
         (create-default-handler)))
       wrap-user-id
