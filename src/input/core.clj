@@ -95,13 +95,6 @@
   {:add (tree-difference add rem)
    :rem (tree-difference rem add)})
 
-(defn fancy-merge [base raw]
-  (let [cooked (dissoc raw :meta/update)]
-    (-> base
-        (merge cooked)
-        (updates-map conjs (:conjs (:meta/update raw)))
-        (updates-map disj (:disj (:meta/update raw))))))
-
 (defn ingest-video* [{:yt/keys [id channel] :keys [lang tags] :as entry}]
   {:videos
    {:id->video {id entry}
@@ -138,7 +131,7 @@
 
 (defn ingest-channel [st ch]
   (-> st
-      (update :id->channel update (:yt/id ch) fancy-merge ch)))
+      (update :id->channel update (:yt/id ch) merge ch)))
 
 (defn ingest-comparison [st cmp]
   (-> st
@@ -149,11 +142,11 @@
 
 (defn ingest-user [st u]
  (-> st
-     (update :id->user update (:id u) fancy-merge u)))
+     (update :id->user update (:id u) merge u)))
 
 (defn ingest-tag [st t]
   (-> st
-      (update :tag->info update (:tag t) fancy-merge t)))
+      (update :tag->info update (:tag t) merge t)))
 
 (def ingesters
   {:video (fn [st v]
