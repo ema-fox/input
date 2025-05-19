@@ -46,6 +46,7 @@ addEventListener('message', evt => {
                 }
                 if (ps === 0) {
                     send_watch_time(yt_id, true, Math.floor(cumms / 1000));
+                    cumms = 0;
                 }
             }
         }
