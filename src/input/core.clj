@@ -287,6 +287,7 @@
 
 (def languages
   [[:es "Spanish"]
+   [:fr "French"]
    [:en "English"]])
 
 (defn seconds->hours-minutes [seconds]
