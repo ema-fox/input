@@ -33,6 +33,9 @@
 
 (defonce !last-watched (atom {}))
 
+(defn orf [& xs]
+  (some identity xs))
+
 (defn conjs [s x]
   (conj (set s) x))
 
@@ -107,6 +110,15 @@
     {:add (ingest-video* new)
      :rem (ingest-video* old)}))
 
+(defn ingest-watch-time [state {:keys [yt-id user-id seconds ended] :as entry}]
+  (update-in state [:users :id->user user-id :watch-log]
+             (fn [log]
+               (if (= yt-id (:yt-id (peek log)))
+                 (update log (dec (count log)) #(-> %
+                                                    (update :seconds + seconds)
+                                                    (update :ended orf ended)))
+                 ((fnil conj []) log entry)))))
+
 (defn expected-result [p1 p2]
   (let [exp (/ (- p2 p1) 400)]
     (/ 1 (inc (Math/pow 10 exp)))))
@@ -161,6 +173,7 @@
            (update st :users ingest-user u))
    :tag (fn [st t]
           (update st :tags ingest-tag t))
+   :watch-time ingest-watch-time
    :user-tag-settings (fn [st {:keys [user-id tag influence] :as uts}]
                         [(-> (get-in st [:users :id->user user-id]
                                      {:kind :user
@@ -276,7 +289,7 @@
   [[:es "Spanish"]
    [:en "English"]])
 
-(defn page [{:keys [lang]} & body]
+(defn page [{:keys [user lang]} & body]
   (response
    (p/html5 {:encoding "UTF-8" :xml? true}
             [:head
@@ -296,6 +309,10 @@
                   [:option {:value (name short)
                             :selected (= short lang)}
                    long])]]
+              [:a {:href "/progress"}
+               (seconds->hours-minutes (->> (:watch-log user)
+                                            (map :seconds)
+                                            (apply +)))]
               [:form.h {:method "POST" :action "/add"}
                [:input {:type "text" :name "url" :placeholder "https://www.youtube.com/watch?v=..."}]
                [:button "Add video"]]]
@@ -421,6 +438,22 @@
          (sort-by #(Math/abs (- reference-score (:de/score % START-SCORE))))
          (take 5))))
 
+(defn seconds->hours-minutes [seconds]
+  (let [minutes (int (/ seconds 60))
+        hours (int (/ minutes 60))
+        rest-minutes (rem minutes 60)]
+    (format "%d:%02d" hours rest-minutes)))
+
+(defn watch-log [{:keys [videos user]}]
+  [:table
+   (for [entry (:watch-log user)]
+     [:tr
+      [:td (:at entry)]
+      [:td (-> (:seconds entry)
+               seconds->hours-minutes)]
+      [:td [:a {:href (str "/watch/" (:yt-id entry))}
+            (get-in videos [:id->video (:yt-id entry) :yt/title])]]])])
+
 (defn channel-title [state ch-id]
   (hu/escape-html (:yt/title (get-in state [:channels :id->channel ch-id]) ch-id)))
 
@@ -429,9 +462,10 @@
   (let [video (get-in state [:videos :id->video yt-id])
         user-id (:id (:user state))]
     [:div.h {:style {:justify-content "space-around"}}
+     [:script {:src "/asset/watch.js"}]
      [:div
       [:iframe.yt-player
-       {:src (str "https://www.youtube.com/embed/" yt-id)
+       {:src (str "https://www.youtube.com/embed/" yt-id "?enablejsapi=1")
         :allowfullscreen true}]
       [:h2 (hu/escape-html (:yt/title video))]
       [:div.h.center-items
@@ -600,6 +634,9 @@
          ["stats"
           {:get (fn [{:keys [state]}]
                   (page state (stats state)))}]
+         ["progress"
+          {:get (fn [{:keys [state]}]
+                  (page state (watch-log state)))}]
          ["add"
           {:post (fn [{:keys [user-id params]}]
                    (let [url (:url params)
@@ -679,6 +716,12 @@
                                       "hide" :hide))
                    (-> (response "")
                        (response/header "HX-Refresh" "true")))}]
+         ["add-watch-time"
+          {:post (fn [{:keys [user-id params] :as req}]
+                   (log! :watch-time user-id :user-id user-id :yt-id (:yt-id params)
+                         :ended (= "true" (:ended params))
+                         :seconds (Long. (:seconds params)))
+                   (response ""))}]
          ["asset/*"
           (create-resource-handler)]
          ])
