@@ -287,6 +287,7 @@
 
 (def languages
   [[:es "Spanish"]
+   [:de "German"]
    [:fr "French"]
    [:en "English"]])
 
