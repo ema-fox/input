@@ -289,6 +289,12 @@
   [[:es "Spanish"]
    [:en "English"]])
 
+(defn seconds->hours-minutes [seconds]
+  (let [minutes (int (/ seconds 60))
+        hours (int (/ minutes 60))
+        rest-minutes (rem minutes 60)]
+    (format "%d:%02d" hours rest-minutes)))
+
 (defn page [{:keys [user lang]} & body]
   (response
    (p/html5 {:encoding "UTF-8" :xml? true}
@@ -437,12 +443,6 @@
          (remove (comp #{yt-id} :yt/id))
          (sort-by #(Math/abs (- reference-score (:de/score % START-SCORE))))
          (take 5))))
-
-(defn seconds->hours-minutes [seconds]
-  (let [minutes (int (/ seconds 60))
-        hours (int (/ minutes 60))
-        rest-minutes (rem minutes 60)]
-    (format "%d:%02d" hours rest-minutes)))
 
 (defn watch-log [{:keys [videos user]}]
   [:table
