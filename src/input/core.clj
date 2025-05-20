@@ -289,6 +289,7 @@
 
 (def languages
   [[:es "Spanish"]
+   [:hi "Hindi"]
    [:de "German"]
    [:fr "French"]
    [:fi "Finnish"]
