@@ -468,10 +468,23 @@
 (defn channel-title [state ch-id]
   (hu/escape-html (:yt/title (get-in state [:channels :id->channel ch-id]) ch-id)))
 
+(defn comparison-box [{:keys [videos comparisons user]}]
+  (let [user-id (:id user)
+        [lw1 lw2] (@!last-watched user-id)
+        v1 (get-in videos [:id->video lw1])
+        v2 (get-in videos [:id->video lw2])]
+    (if (and lw1 lw2 (= (:lang v1) (:lang v2))
+             (not (get comparisons [user-id #{lw1 lw2}])))
+      [:div
+       [:div#compare
+        "Which did you find more difficult?"
+        [:div.h.center-items
+         (half-compare lw1 lw2)
+         "or"
+         (half-compare lw2 lw1)]]])) )
 
 (defn watch [state yt-id side-videos & {:as opts}]
-  (let [video (get-in state [:videos :id->video yt-id])
-        user-id (:id (:user state))]
+  (let [video (get-in state [:videos :id->video yt-id])]
     [:div.watch-flex
      [:script {:src "/asset/watch.js"}]
      [:div
@@ -495,17 +508,7 @@
             long])]]]
       [:div#tags
        (tags state yt-id)]
-
-
-      (let [[lw1 lw2] (@!last-watched user-id)]
-        (if (and lw1 lw2 (not (get-in state [:comparisons [user-id #{lw1 lw2}]])))
-          [:div
-           [:div#compare
-            "Which did you find more difficult?"
-            [:div.h.center-items
-             (half-compare lw1 lw2)
-             "or"
-             (half-compare lw2 lw1)]]]))]
+      (comparison-box state)]
      [:div
       (video-list state side-videos opts)]]))
 
