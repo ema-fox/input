@@ -135,6 +135,8 @@
         adjustment (* k (- 1 (expected-result (:de/score (videos winner) START-SCORE)
                                               (:de/score (videos loser) START-SCORE))))]
     (-> videos
+        (update-in [winner :de/comparisons] (fnil inc 0))
+        (update-in [loser :de/comparisons] (fnil inc 0))
         (update-in [winner :de/score] (fnil + START-SCORE) adjustment)
         (update-in [loser :de/score] (fnil - START-SCORE) adjustment))))
 
@@ -297,6 +299,10 @@
         rest-minutes (rem minutes 60)]
     (format "%d:%02d" hours rest-minutes)))
 
+(defn admin?
+  ([{:keys [user]}]
+   (get-in user [:roles :admin])))
+
 (defn page [{:keys [user lang]} & body]
   (response
    (p/html5 {:encoding "UTF-8" :xml? true}
@@ -345,7 +351,7 @@
    (for [tag (sort tags)]
      [:div tag])])
 
-(defn video-card [{:keys [user]} opts video]
+(defn video-card [{:keys [user] :as state} opts video]
   [:a.video-link {:class (when (some (set (:tags-prioritize user)) (:tags video))
                            [:prioritized])
                   :href (cond-> (str "/watch/" (:yt/id video))
@@ -356,12 +362,14 @@
            :style {:grid-area  "stack" } }]
     [:div {:style {#_#_:position "absolute"
                    :grid-area  "stack"}}
-     [:div {:style {:background "white"
+     [:div.h {:style {:background "white"
                     :width "fit-content"
                     :margin "1ch"
                     :padding "0.5ch"
                     :border-radius "0.5ch"}}
-      (str (int (:de/score video START-SCORE)))]]]
+      (str (int (:de/score video START-SCORE)))
+      (when (admin? state)
+        [:div.admin (str (:de/comparisons video))])]]]
    [:div
     (hu/escape-html (:yt/title video))]
    (tags-list-inert (filter (set (:tags-shown-on-card user)) (:tags video)))])
@@ -387,7 +395,6 @@
                :hx-get (str "/update-tags?yt-id=" yt-id)
                :hx-target "#tags"}
       "update tags"]]))
-
 
 (defn tags-form [state yt-id]
   (let [video (get-in state [:videos :id->video yt-id])]
@@ -547,10 +554,6 @@
    (user-tag-settings-form state tag)
    (video-list state (get-tag-videos state tag)
                :context (str "tag=" tag))])
-
-(defn admin?
-  ([{:keys [user]}]
-   (get-in user [:roles :admin])))
 
 (defn stats [{:keys [videos user] :as state}]
   [:div
