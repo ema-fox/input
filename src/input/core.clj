@@ -291,6 +291,7 @@
   [[:es "Spanish"]
    [:de "German"]
    [:fr "French"]
+   [:fi "Finnish"]
    [:en "English"]])
 
 (defn seconds->hours-minutes [seconds]
