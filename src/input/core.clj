@@ -302,7 +302,7 @@
    (p/html5 {:encoding "UTF-8" :xml? true}
             [:head
              [:title "Comprehensible Input"]
-             [:link {:rel "stylesheet" :href "/asset/style.css?"}]
+             [:link {:rel "stylesheet" :href "/asset/style.css?0"}]
              [:link {:rel "icon" :href "/asset/favicon.png"}]
              [:script {:src "https://unpkg.com/htmx.org@2.0.4"
                        :integirty "sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"}]]
@@ -463,7 +463,7 @@
 (defn watch [state yt-id side-videos & {:as opts}]
   (let [video (get-in state [:videos :id->video yt-id])
         user-id (:id (:user state))]
-    [:div.h {:style {:justify-content "space-around"}}
+    [:div.watch-flex
      [:script {:src "/asset/watch.js"}]
      [:div
       [:iframe.yt-player

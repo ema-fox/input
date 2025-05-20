@@ -4,13 +4,15 @@ body {
 
 .header {
   display: flex;
+  flex-wrap: wrap;
   gap: 1ch;
   justify-content: space-between;
   margin-bottom: 1ch;
+  font-size: 1.3em;
 }
 
-input, button {
-  font-size: 1.3em
+input, button, select {
+  font-size: 1em
 }
 
 /*
@@ -88,4 +90,17 @@ input, button {
 
 .block {
   display: block
+}
+
+.watch-flex {
+  display: flex;
+  justify-content: space-around;
+  gap: 1ch;
+}
+
+@media (max-width:1200px) {
+  .watch-flex {
+    flex-direction: column;
+  }
+
 }
