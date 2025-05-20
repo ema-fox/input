@@ -407,6 +407,8 @@
       [:datalist {:id "tags-list"}
        (for [tag (-> state
                      :videos
+                     :lang->
+                     (get (:lang state))
                      :tag->ids
                      keys
                      (->> (filter (approved-tags-for-user state)))
