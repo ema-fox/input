@@ -64,6 +64,14 @@
         (set? b) (set/union a b)
         :else b))
 
+(defn merge-heterogenous [fs a b]
+  (reduce-kv (fn [m k v]
+               (if-let [f (fs k)]
+                 (update m k f v)
+                 (assoc m k v)))
+             a
+             b))
+
 (defn soc [m k v]
   (if (nil? v)
     (dissoc m k)
@@ -110,14 +118,19 @@
     {:add (ingest-video* new)
      :rem (ingest-video* old)}))
 
-(defn ingest-watch-time [state {:keys [yt-id user-id seconds ended] :as entry}]
-  (update-in state [:users :id->user user-id :watch-log]
-             (fn [log]
-               (if (= yt-id (:yt-id (peek log)))
-                 (update log (dec (count log)) #(-> %
-                                                    (update :seconds + seconds)
-                                                    (update :ended orf ended)))
-                 ((fnil conj []) log entry)))))
+(defn merge-watch-time [a b]
+  (merge-heterogenous {:seconds + :ended orf} a b))
+
+(defn update-watch-log [log {:keys [yt-id user-id] :as entry}]
+  (if (= yt-id (:yt-id (peek log)))
+    (update log (dec (count log))
+            #(merge-heterogenous {:seconds + :ended orf} % entry))
+    ((fnil conj []) log entry)))
+
+(defn ingest-watch-time [state {:keys [yt-id user-id] :as entry}]
+  (update-in state [:users :id->user user-id :watch-log :lang->
+                    (get-in state [:videos :id->video yt-id :lang])]
+             update-watch-log entry))
 
 (defn expected-result [p1 p2]
   (let [exp (/ (- p2 p1) 400)]
@@ -295,6 +308,8 @@
    [:fi "Finnish"]
    [:en "English"]])
 
+(def lang-kw->name (into {} languages))
+
 (defn seconds->hours-minutes [seconds]
   (let [minutes (int (/ seconds 60))
         hours (int (/ minutes 60))
@@ -326,7 +341,8 @@
                             :selected (= short lang)}
                    long])]]
               [:a {:href "/progress"}
-               (seconds->hours-minutes (->> (:watch-log user)
+               "progress "
+               (seconds->hours-minutes (->> (get-in user [:watch-log :lang-> lang])
                                             (map :seconds)
                                             (apply +)))]
               [:form.h {:method "POST" :action "/add"}
@@ -458,14 +474,18 @@
          (take 5))))
 
 (defn watch-log [{:keys [videos user]}]
-  [:table
-   (for [entry (:watch-log user)]
-     [:tr
-      [:td (:at entry)]
-      [:td (-> (:seconds entry)
-               seconds->hours-minutes)]
-      [:td [:a {:href (str "/watch/" (:yt-id entry))}
-            (get-in videos [:id->video (:yt-id entry) :yt/title])]]])])
+  [:div
+   (for [[lang watch-log] (-> user :watch-log :lang->)]
+     [:div
+      [:h2 (lang-kw->name lang)]
+      [:table
+       (for [entry watch-log]
+         [:tr
+          [:td (:at entry)]
+          [:td (-> (:seconds entry)
+                   seconds->hours-minutes)]
+          [:td [:a {:href (str "/watch/" (:yt-id entry))}
+                (get-in videos [:id->video (:yt-id entry) :yt/title])]]])]])])
 
 (defn channel-title [state ch-id]
   (hu/escape-html (:yt/title (get-in state [:channels :id->channel ch-id]) ch-id)))
