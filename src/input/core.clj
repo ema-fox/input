@@ -528,6 +528,7 @@
                               "")
                      :selected (= short (:lang video))}
             long])]]]
+      [:div (str "estimated difficulty: " (int (:de/score video START-SCORE)) " from " (:de/comparisons video 0) " comparisons")]
       [:div#tags
        (tags state yt-id)]
       (comparison-box state)]
