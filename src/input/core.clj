@@ -538,7 +538,7 @@
             long])]]]
       [:div (str "estimated difficulty: " (int (:de/score video START-SCORE)) " from " (:de/comparisons video 0) " comparisons")
        (when (admin? state)
-         [:div.admin (str (seconds->hours-minutes (:de/watch-seconds video))
+         [:div.admin (str (seconds->hours-minutes (:de/watch-seconds video 0))
                           " "
                           (:de/times-finished video))])]
       [:div#tags
