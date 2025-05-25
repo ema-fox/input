@@ -548,6 +548,17 @@
          "or"
          (half-compare lw2 lw1)]]])))
 
+(defn judgement-box* [yt-id]
+  [:div.judgement-buttons
+   (for [[value label] [[:slow "too slow"]
+                        [:good "about right"]
+                        [:hard "too hard"]]]
+     [:form
+      [:input {:type "hidden" :name "yt-id" :value yt-id}]
+      [:input {:type "hidden" :name "judgement" :value (name value)}]
+      [:button {:hx-post "/judge" :hx-target ".judgement-buttons"}
+       label]])])
+
 (defn watch-box [yt-id]
   [:div
    [:script {:src "/asset/watch.js"}]
@@ -582,6 +593,7 @@
                           (:de/times-finished video))])]
       [:div#tags
        (tags state yt-id)]
+      (judgement-box* yt-id)
       (comparison-box state)]
      [:div
       (video-list state side-videos opts)]]))
@@ -831,6 +843,11 @@
                                        (cond
                                          (:channel params) {:context (str "channel=" (:channel params))}
                                          (:tag params) {:context (str "tag=" (:tag params))})))))}]
+         ["judge"
+          {:post (fn [{:keys [state user-id params]}]
+                   (log! :judgement user-id :user-id user-id :yt-id (:yt-id params)
+                         :judgement (keyword (:judgement params)))
+                   (response ""))}]
          ["find-level/:lang"
           {:get (fn [{:keys [state path-params]}]
                   (page2 find-level-start (assoc state :lang (keyword (:lang path-params)))))}]
