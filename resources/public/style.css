@@ -122,6 +122,23 @@ input, button, select {
   font-size: 2em;
 }
 
+.judgement {
+  font-weight: bold;
+  font-family: sans-serif;
+}
+
+.judgement-slow {
+  color: oklch(0.5 0.2 250);
+}
+
+.judgement-good {
+  color: oklch(0.5 0.2 150);
+}
+
+.judgement-hard {
+  color: oklch(0.5 0.2 50);
+}
+
 @media (max-width:1200px) {
   .watch-flex {
     flex-direction: column;

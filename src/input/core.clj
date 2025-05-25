@@ -127,7 +127,8 @@
             #(merge-heterogenous {:seconds + :ended orf} % entry))
     ((fnil conj []) log entry)))
 
-(defn ingest-watch-time [state {:keys [yt-id user-id seconds ended] :as entry}]
+(defn ingest-watch-time [state {:keys [yt-id user-id seconds ended] :as entry
+                                :or {seconds 0}}]
   (-> state
       (update-in [:users :id->user user-id :watch-log :lang->
                   (get-in state [:videos :id->video yt-id :lang])]
@@ -226,7 +227,7 @@
                                        disj)
                                      tag)
                              (assoc-in [:tag-settings tag] uts))])
-   :judgement (fn [st {:keys [user-id yt-id judgement]}]
+   :judgement (fn [st {:keys [by at user-id yt-id judgement] :as entry}]
                 (let [{:keys [lang de/score]} (get-in st [:videos :id->video yt-id])
                       {:keys [lang->levels]} (get-in st [:users :id->user user-id])]
                   [{:kind :user
@@ -238,7 +239,9 @@
                                               :hard (merge-with min {:hard score} levels)
                                               :good (->> levels
                                                          (merge-with min {:good-low score})
-                                                         (merge-with max {:good-high score})))))}]))
+                                                         (merge-with max {:good-high score})))))}
+                   (assoc (select-keys entry [:user-id :by :at :yt-id :judgement])
+                          :kind :watch-time)]))
    :do/reset-level (fn [st {:keys [user-id]}]
                      (let [{:keys [lang lang->levels]} (get-in st [:users :id->user user-id])]
                        [{:kind :user
@@ -346,7 +349,7 @@
 (def lang-kw->name (into {} languages))
 
 (defn seconds->hours-minutes [seconds]
-  (let [minutes (int (/ seconds 60))
+  (let [minutes (int (/ (or seconds 0) 60))
         hours (int (/ minutes 60))
         rest-minutes (rem minutes 60)]
     (format "%d:%02d" hours rest-minutes)))
@@ -360,7 +363,7 @@
    (p/html5 {:encoding "UTF-8" :xml? true}
             [:head
              [:title "Comprehensible Input"]
-             [:link {:rel "stylesheet" :href "/asset/style.css?1"}]
+             [:link {:rel "stylesheet" :href "/asset/style.css?2"}]
              [:link {:rel "icon" :href "/asset/favicon.png"}]
              [:script {:src "https://unpkg.com/htmx.org@2.0.4"
                        :integirty "sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"}]]
@@ -378,7 +381,7 @@
               [:a {:href "/progress"}
                "progress "
                (seconds->hours-minutes (->> (get-in user [:watch-log :lang-> lang])
-                                            (map :seconds)
+                                            (keep :seconds)
                                             (apply +)))]
               [:form.h {:method "POST" :action "/add"}
                [:input {:type "text" :name "url" :placeholder "https://www.youtube.com/watch?v=..."}]
@@ -428,7 +431,7 @@
       (when (admin? state)
         [:div.admin (str (:de/comparisons video)
                          " "
-                         (seconds->hours-minutes (:de/watch-seconds video 0))
+                         (seconds->hours-minutes (:de/watch-seconds video))
                          " "
                          (:de/times-finished video))])]]]
    [:div
@@ -517,11 +520,13 @@
      [:div
       [:h2 (lang-kw->name lang)]
       [:table
-       (for [entry watch-log]
+       (for [entry watch-log
+             :let [judgement (some-> (:judgement entry) name)]]
          [:tr
           [:td (:at entry)]
           [:td (-> (:seconds entry)
                    seconds->hours-minutes)]
+          [:td.judgement {:class (str "judgement-" judgement)} judgement]
           [:td [:a {:href (str "/watch/" (:yt-id entry))}
                 (get-in videos [:id->video (:yt-id entry) :yt/title])]]])]])])
 
