@@ -179,6 +179,19 @@
   (-> st
       (update :tag->info update (:tag t) merge t)))
 
+(defn get-videos [{:keys [lang videos]}]
+  (->> (get-in videos [:lang-> lang :channel->ids])
+       vals
+       (apply concat)
+       (map (:id->video videos))
+       (sort-by #(:de/score % START-SCORE))))
+
+(defn get-level-range [state]
+  (let [videos (->> (get-videos state)
+                    (filter #(<= 4 (:de/comparisons % 0))))]
+    {:slow (:de/score (first videos))
+     :hard (:de/score (last videos))}))
+
 (def ingesters
   {:video (fn [st v]
             (let [{:keys [add rem]} (simplify-tree-diff (ingest-video st v))]
@@ -213,6 +226,24 @@
                                        disj)
                                      tag)
                              (assoc-in [:tag-settings tag] uts))])
+   :judgement (fn [st {:keys [user-id yt-id judgement]}]
+                (let [{:keys [lang de/score]} (get-in st [:videos :id->video yt-id])
+                      {:keys [lang->levels]} (get-in st [:users :id->user user-id])]
+                  [{:kind :user
+                    :id user-id
+                    :lang->levels (update lang->levels lang
+                                          (fn [levels]
+                                            (case judgement
+                                              :slow (merge-with max {:slow score} levels)
+                                              :hard (merge-with min {:hard score} levels)
+                                              :good (->> levels
+                                                         (merge-with min {:good-low score})
+                                                         (merge-with max {:good-high score})))))}]))
+   :do/reset-level (fn [st {:keys [user-id]}]
+                     (let [{:keys [lang lang->levels]} (get-in st [:users :id->user user-id])]
+                       [{:kind :user
+                         :id user-id
+                         :lang->levels (assoc lang->levels lang (get-level-range (assoc st :lang lang)))}]))
    :do/make-admin (fn [st {:keys [user-id]}]
                     [{:kind :user
                       :id user-id
@@ -329,7 +360,7 @@
    (p/html5 {:encoding "UTF-8" :xml? true}
             [:head
              [:title "Comprehensible Input"]
-             [:link {:rel "stylesheet" :href "/asset/style.css?0"}]
+             [:link {:rel "stylesheet" :href "/asset/style.css?1"}]
              [:link {:rel "icon" :href "/asset/favicon.png"}]
              [:script {:src "https://unpkg.com/htmx.org@2.0.4"
                        :integirty "sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"}]]
@@ -354,9 +385,13 @@
                [:button "Add video"]]]
              [:div
               body]
-             [:div "Please send feedback and questions to "
+             [:div.footer "Please send feedback and questions to "
               [:a {:href "mailto:ema@mailbox.org"}
                "ema@mailbox.org"]]])))
+
+(defn page2 [handler state & args]
+  ;; TODO: time handler and inject into page
+  (page state (apply handler state args)))
 
 (defn half-compare [this-id other-id]
   [:form
@@ -464,21 +499,16 @@
        (map (:id->video videos))
        (sort-by :de/score)))
 
-(defn get-videos [{:keys [lang videos]}]
-  (->> (get-in videos [:lang-> lang :channel->ids])
-       vals
-       (apply concat)
-       (map (:id->video videos))
-       (sort-by :de/score)))
+(defn sort-from-score [reference-score videos]
+  (sort-by #(Math/abs (- reference-score (:de/score % START-SCORE))) videos))
 
 (defn get-side-videos [{:keys [videos] :as state} yt-id & {:as opts :keys [user channel tag]}]
-  (let [video (get-in videos [:id->video yt-id])
-        reference-score (:de/score video START-SCORE)]
+  (let [video (get-in videos [:id->video yt-id])]
     (->> (cond channel (get-channel-videos state channel)
                tag (get-tag-videos state tag)
                :else (get-videos state))
          (remove (comp #{yt-id} :yt/id))
-         (sort-by #(Math/abs (- reference-score (:de/score % START-SCORE))))
+         (sort-from-score (:de/score video START-SCORE))
          (take 5))))
 
 (defn watch-log [{:keys [videos user]}]
@@ -511,16 +541,20 @@
         [:div.h.center-items
          (half-compare lw1 lw2)
          "or"
-         (half-compare lw2 lw1)]]])) )
+         (half-compare lw2 lw1)]]])))
+
+(defn watch-box [yt-id]
+  [:div
+   [:script {:src "/asset/watch.js"}]
+   [:iframe.yt-player
+    {:src (str "https://www.youtube.com/embed/" yt-id "?enablejsapi=1")
+     :allowfullscreen true}]])
 
 (defn watch [state yt-id side-videos & {:as opts}]
   (let [video (get-in state [:videos :id->video yt-id])]
     [:div.watch-flex
-     [:script {:src "/asset/watch.js"}]
      [:div
-      [:iframe.yt-player
-       {:src (str "https://www.youtube.com/embed/" yt-id "?enablejsapi=1")
-        :allowfullscreen true}]
+      (watch-box yt-id)
       [:h2 (hu/escape-html (:yt/title video))]
       [:div.h.center-items
        [:a {:href (str "/channel/" (:yt/channel video))}
@@ -546,6 +580,54 @@
       (comparison-box state)]
      [:div
       (video-list state side-videos opts)]]))
+
+(defn get-mid-video [state start end]
+  (->> (get-videos state)
+       (filter #(and (<= 4 (:de/comparisons % 0))
+                     (< start (:de/score % START-SCORE) end)))
+       (sort-from-score (* 0.5 (+ start end)))
+       first))
+
+(defn judgement-box [state action mid-vid]
+  [:div.center-column
+   [:div.message
+    "We will show you a series of videos. Watch each until you have a general idea of how difficult it is for you to understand."]
+   [:div
+    (watch-box (:yt/id mid-vid))]
+   [:form.judgement-buttons {:method "POST" :action action}
+    [:input {:type "hidden" :name "lang" :value (:lang state)}]
+    [:input {:type "hidden" :name "yt-id" :value (:yt/id mid-vid)}]
+    [:button {:name "judgement" :value "slow"}
+     "too slow"]
+    [:button {:name "judgement" :value "good"}
+     "about right"]
+    [:button {:name "judgement" :value "hard"}
+     "too hard"]]])
+
+(defn find-level-start [state]
+  (let [{:keys [slow hard]} (get-level-range state)]
+    (judgement-box state  "/find-level-start" (get-mid-video state slow hard))))
+
+(defn find-level-cont [{:keys [user lang] :as state}]
+  (let [{:keys [slow good-low good-high hard]} (get-in user [:lang->levels lang])
+        mid-vid (if good-low
+                  (or (get-mid-video state slow good-low)
+                      (get-mid-video state good-high hard))
+                  (get-mid-video state slow hard))]
+    (if mid-vid
+      (judgement-box state "/find-level-cont" mid-vid)
+      [:div.message.center-column
+       [:div
+        (str "We recomend you to watch videos between difficulty " (int (or good-low slow)) " and " (int (or good-high hard)) ".")]
+       [:div
+        "If a video with a lower difficulty score catches your eye do watch it, if necessary with a higher playback speed."]
+       [:div
+        "If a video with a higher difficulty score looks interesting to you perhaps give it a try anyway. As long as you're understanding something you're learning something."]
+       [:div
+        "If there are not enough videos for you to watch in the suggested range email Emanuel at "
+        [:a {:href "mailto:ema@mailbox.org"}
+         "ema@mailbox.org"]
+        " and he will try to add more."]])))
 
 (defn channel [state ch-id]
   (video-list state (get-channel-videos state ch-id)
@@ -744,6 +826,23 @@
                                        (cond
                                          (:channel params) {:context (str "channel=" (:channel params))}
                                          (:tag params) {:context (str "tag=" (:tag params))})))))}]
+         ["find-level/:lang"
+          {:get (fn [{:keys [state path-params]}]
+                  (page2 find-level-start (assoc state :lang (keyword (:lang path-params)))))}]
+         ["find-level-cont"
+          {:get (fn [{:keys [state]}]
+                  (page2 find-level-cont state))
+           :post (fn [{:keys [state user-id params]}]
+                   (log! :judgement user-id :user-id user-id :yt-id (:yt-id params)
+                         :judgement (keyword (:judgement params)))
+                   (redirect "/find-level-cont" :see-other))}]
+         ["find-level-start"
+          {:post (fn [{:keys [state user-id params]}]
+                   (log! :user user-id :id user-id :lang (keyword (:lang params)))
+                   (log! :do/reset-level user-id :user-id user-id)
+                   (log! :judgement user-id :user-id user-id :yt-id (:yt-id params)
+                         :judgement (keyword (:judgement params)))
+                   (redirect "/find-level-cont" :see-other))}]
          ["channel/:ch-id"
           {:get  (fn [{:keys [state path-params]}]
                    (page state (channel state (:ch-id path-params))))}]

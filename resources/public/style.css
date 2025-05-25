@@ -11,6 +11,10 @@ body {
   font-size: 1.3em;
 }
 
+.footer {
+  margin-top: 1em;
+}
+
 input, button, select {
   font-size: 1em
 }
@@ -96,6 +100,26 @@ input, button, select {
   display: flex;
   justify-content: space-around;
   gap: 1ch;
+}
+
+.center-column {
+  display: flex;
+  gap: 1ch;
+  flex-direction: column;
+  margin: 0 auto;
+  max-width: 80ch;
+}
+
+.message {
+  font-size: 1.3em;
+}
+
+.judgement-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1ch;
+  justify-content: space-evenly;
+  font-size: 2em;
 }
 
 @media (max-width:1200px) {
