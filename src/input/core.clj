@@ -228,7 +228,7 @@
                                      tag)
                              (assoc-in [:tag-settings tag] uts))])
    :judgement (fn [st {:keys [by at user-id yt-id judgement] :as entry}]
-                (let [{:keys [lang de/score]} (get-in st [:videos :id->video yt-id])
+                (let [{:keys [lang de/score] :or {score START-SCORE}} (get-in st [:videos :id->video yt-id])
                       {:keys [lang->levels]} (get-in st [:users :id->user user-id])]
                   [{:kind :user
                     :id user-id
