@@ -66,11 +66,27 @@
 
 (defn merge-heterogenous [fs a b]
   (reduce-kv (fn [m k v]
-               (if-let [f (fs k)]
+               (if-let [f (and (contains? m k)
+                               (or (fs k)
+                                   (::default fs)))]
                  (update m k f v)
                  (assoc m k v)))
              a
              b))
+
+(defrecord Diff [plus minus])
+
+(defn tree-merge-heterogenous [fs a b]
+  ;; There is probably some clever way to make this more elegant
+  (merge-heterogenous (assoc fs ::default
+                             (fn [a b]
+                               (cond  (instance? Diff b)
+                                      (tree-merge-heterogenous fs (tree-remove a (:minus b))
+                                                               (:plus b))
+                                      (map? b) (tree-merge-heterogenous fs a b)
+                                      (set? b) (set/union a b)
+                                      :else b)))
+                      a b))
 
 (defn soc [m k v]
   (if (nil? v)
@@ -127,15 +143,22 @@
             #(merge-heterogenous {:seconds + :ended orf} % entry))
     ((fnil conj []) log entry)))
 
-(defn ingest-watch-time [state {:keys [yt-id user-id seconds ended] :as entry
+(defn ingest-watch-time [state {:keys [yt-id user-id seconds ended judgement] :as entry
                                 :or {seconds 0}}]
   (-> state
       (update-in [:users :id->user user-id :watch-log :lang->
                   (get-in state [:videos :id->video yt-id :lang])]
                  update-watch-log entry)
-      (update-in [:videos :id->video yt-id] (partial merge-with +)
-                 {:de/watch-seconds seconds
-                  :de/times-finished (if ended 1 0)})))
+      (update-in [:videos :id->video yt-id] (partial tree-merge-heterogenous
+                                                     {:de/watch-seconds +
+                                                      :de/times-finished +
+                                                      :slow-count +
+                                                      :good-count +
+                                                      :hard-count +})
+                 (cond-> {:de/watch-seconds seconds
+                          :de/times-finished (if ended 1 0)}
+                   judgement
+                   (assoc :de/judgements {(keyword (str (name judgement) "-count")) 1})))))
 
 (defn expected-result [p1 p2]
   (let [exp (/ (- p2 p1) 400)]
@@ -429,11 +452,17 @@
                     :border-radius "0.5ch"}}
       (str (int (:de/score video START-SCORE)))
       (when (admin? state)
-        [:div.admin (str (:de/comparisons video)
+        [:div.admin.h
+         (str (:de/comparisons video)
                          " "
                          (seconds->hours-minutes (:de/watch-seconds video))
                          " "
-                         (:de/times-finished video))])]]]
+                         (:de/times-finished video)
+                         )
+         [:span.judgement-slow (:slow-count (:de/judgements video))]
+         [:span.judgement-good (:good-count (:de/judgements video))]
+         [:span.judgement-hard (:hard-count (:de/judgements video))]
+         ])]]]
    [:div
     (hu/escape-html (:yt/title video))]
    (tags-list-inert (filter (set (:tags-shown-on-card user)) (:tags video)))])
