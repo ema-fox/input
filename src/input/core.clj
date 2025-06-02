@@ -139,8 +139,7 @@
 
 (defn update-watch-log [log {:keys [yt-id user-id] :as entry}]
   (if (= yt-id (:yt-id (peek log)))
-    (update log (dec (count log))
-            #(merge-heterogenous {:seconds + :ended orf} % entry))
+    (update log (dec (count log)) merge-watch-time entry)
     ((fnil conj []) log entry)))
 
 (defn ingest-watch-time [state {:keys [yt-id user-id seconds ended judgement] :as entry
@@ -149,6 +148,7 @@
       (update-in [:users :id->user user-id :watch-log :lang->
                   (get-in state [:videos :id->video yt-id :lang])]
                  update-watch-log entry)
+      (update-in [:users :id->user user-id :watch-log :id-> yt-id] merge-watch-time entry)
       (update-in [:videos :id->video yt-id] (partial tree-merge-heterogenous
                                                      {:de/watch-seconds +
                                                       :de/times-finished +
@@ -386,7 +386,7 @@
    (p/html5 {:encoding "UTF-8" :xml? true}
             [:head
              [:title "Comprehensible Input"]
-             [:link {:rel "stylesheet" :href "/asset/style.css?2"}]
+             [:link {:rel "stylesheet" :href "/asset/style.css?3"}]
              [:link {:rel "icon" :href "/asset/favicon.png"}]
              [:script {:src "https://unpkg.com/htmx.org@2.0.4"
                        :integirty "sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"}]]
@@ -442,6 +442,8 @@
    [:div {:style {:display "grid"
                   :grid-template-areas "\"stack\""}}
     [:img {:src (str "https://img.youtube.com/vi/" (:yt/id video) "/hqdefault.jpg")
+           :class (when (get-in user [:watch-log :id-> (:yt/id video)])
+                    [:watched])
            :style {:grid-area  "stack" } }]
     [:div {:style {#_#_:position "absolute"
                    :grid-area  "stack"}}
