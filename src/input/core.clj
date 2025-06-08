@@ -76,18 +76,6 @@
 
 (defrecord Diff [plus minus])
 
-(defn tree-merge-heterogenous [fs a b]
-  ;; There is probably some clever way to make this more elegant
-  (merge-heterogenous (assoc fs ::default
-                             (fn [a b]
-                               (cond  (instance? Diff b)
-                                      (tree-merge-heterogenous fs (tree-remove a (:minus b))
-                                                               (:plus b))
-                                      (map? b) (tree-merge-heterogenous fs a b)
-                                      (set? b) (set/union a b)
-                                      :else b)))
-                      a b))
-
 (defn soc [m k v]
   (if (nil? v)
     (dissoc m k)
@@ -117,6 +105,18 @@
                                        b))
         (set? b) (not-empty (set/difference a b))
         :else a))
+
+(defn tree-merge-heterogenous [fs a b]
+  ;; There is probably some clever way to make this more elegant
+  (merge-heterogenous (assoc fs ::default
+                             (fn [a b]
+                               (cond  (instance? Diff b)
+                                      (tree-merge-heterogenous fs (tree-remove a (:minus b))
+                                                               (:plus b))
+                                      (map? b) (tree-merge-heterogenous fs a b)
+                                      (set? b) (set/union a b)
+                                      :else b)))
+                      a b))
 
 (defn simplify-tree-diff [{:keys [add rem]}]
   {:add (tree-difference add rem)
