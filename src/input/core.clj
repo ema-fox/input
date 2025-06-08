@@ -362,7 +362,8 @@
                     (map first)))))
 
 (def languages
-  [[:es "Spanish"]
+  [[:bo "Tibetan"]
+   [:es "Spanish"]
    [:hi "Hindi"]
    [:de "German"]
    [:fr "French"]
