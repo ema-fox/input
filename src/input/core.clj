@@ -441,9 +441,10 @@
    [:div {:style {:display "grid"
                   :grid-template-areas "\"stack\""}}
     [:img {:src (str "https://img.youtube.com/vi/" (:yt/id video) "/hqdefault.jpg")
-           :class (when (get-in user [:watch-log :id-> (:yt/id video)])
-                    [:watched])
            :style {:grid-area  "stack" } }]
+    (when (get-in user [:watch-log :id-> (:yt/id video)])
+      [:div {:style {:grid-area  "stack"
+                     :background "rgba(200, 200, 200, 0.6)"}}])
     [:div {:style {#_#_:position "absolute"
                    :grid-area  "stack"}}
      [:div.h {:style {:background "white"
