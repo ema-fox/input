@@ -31,8 +31,6 @@
            :file-path "settings.edn"
            :init {}))
 
-(defonce !last-watched (atom {}))
-
 (defn orf [& xs]
   (some identity xs))
 
@@ -565,9 +563,13 @@
 (defn channel-title [state ch-id]
   (hu/escape-html (:yt/title (get-in state [:channels :id->channel ch-id]) ch-id)))
 
-(defn comparison-box [{:keys [videos comparisons user]}]
+(defn comparison-box [{:keys [videos comparisons user lang]} lw1]
   (let [user-id (:id user)
-        [lw1 lw2] (@!last-watched user-id)
+        lw2 (->> (rseq (get-in user [:watch-log :lang-> lang]))
+                 (take 2)
+                 (map :yt-id)
+                 (remove #{lw1})
+                 first)
         v1 (get-in videos [:id->video lw1])
         v2 (get-in videos [:id->video lw2])]
     (if (and lw1 lw2 (= (:lang v1) (:lang v2))
@@ -626,7 +628,7 @@
       [:div#tags
        (tags state yt-id)]
       (judgement-box* yt-id)
-      (comparison-box state)]
+      (comparison-box state yt-id)]
      [:div
       (video-list state side-videos opts)]]))
 
@@ -868,7 +870,6 @@
          ["watch/:yt-id"
           {:get (fn [{:keys [state user-id path-params params] :as a}]
                   (let [yt-id (:yt-id path-params)]
-                    (swap! !last-watched update user-id (comp (partial take 2) distinct conj) yt-id)
                     (page state (watch state yt-id (get-side-videos state yt-id
                                                                     :channel (:channel params)
                                                                     :tag (:tag params))
