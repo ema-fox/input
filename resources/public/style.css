@@ -38,15 +38,15 @@ input, button, select {
   display: flex;
   flex-wrap: wrap;
   gap: 1ch;
-  font-family: sans-serif;
   padding: 1ch;
-  font-size: 1.2em;
 }
 
 .tags > *, .tag {
   background: oklch(0.8 0 0);
   padding: 0.8ch;
   border-radius: 1ch;
+  font-family: sans-serif;
+  font-size: 1.2em;
   text-decoration: none;
   color: oklch(0.2 0 0);
 }
@@ -69,6 +69,11 @@ input, button, select {
 
 .center-items {
   align-items: center;
+}
+
+.center {
+  width: max-content;
+  margin: auto;
 }
 
 .video-link {
@@ -138,6 +143,30 @@ input, button, select {
 .judgement-hard {
   color: oklch(0.5 0.2 50);
 }
+
+.fan {
+  display: grid;
+  grid-template-areas: "stack";
+  padding: 70px 190px;
+}
+
+.fan > img {
+  grid-area: stack;
+  transform-origin: 50% 150%;
+  transform: rotate(calc(25deg - var(--index) * 10deg));
+  transition: all 0.1s;
+}
+
+.fan:hover > img {
+  transform: rotate(calc(25deg - var(--index) * 15deg));
+  transform-origin: 0% 250%;
+}
+
+.fan > img:nth-child(1) {--index: 0;}
+.fan > img:nth-child(2) {--index: 1;}
+.fan > img:nth-child(3) {--index: 2;}
+.fan > img:nth-child(4) {--index: 3;}
+.fan > img:nth-child(5) {--index: 4;}
 
 @media (max-width:1200px) {
   .watch-flex {

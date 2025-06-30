@@ -385,7 +385,7 @@
    (p/html5 {:encoding "UTF-8" :xml? true}
             [:head
              [:title "Comprehensible Input"]
-             [:link {:rel "stylesheet" :href "/asset/style.css?3"}]
+             [:link {:rel "stylesheet" :href "/asset/style.css?4"}]
              [:link {:rel "icon" :href "/asset/favicon.png"}]
              [:script {:src "https://unpkg.com/htmx.org@2.0.4"
                        :integirty "sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"}]]
@@ -479,7 +479,18 @@
 (defn tags-list [tags]
   [:div.tags
    (for [tag (sort tags)]
-     [:a {:href (str "/tag/" tag)} tag])])
+     [:a {:href (str "/tag/" tag)}
+      tag])])
+
+(defn big-tags-list [tags]
+  [:div.h
+   (for [[tag yt-ids] (sort-by key tags)]
+     [:a {:href (str "/tag/" tag)}
+      [:div.fan
+       (for [yt-id (take 5 yt-ids)]
+         [:img {:src (str "https://img.youtube.com/vi/" yt-id "/hqdefault.jpg")}])]
+      [:div.center.tag
+       tag]])])
 
 (defn tags [{:keys [videos] :as state} yt-id]
   (let [video (get-in videos [:id->video yt-id])]
@@ -782,14 +793,16 @@
                    (->> (sort-by second))))))]])
 
 (defn front-page [{:keys [videos lang] :as state}]
-  [:div
-   (tags-list (->> (get-in videos [:lang-> lang :tag->ids])
-                   keys
-                   (filter (approved-tags-for-user state))))
-   [:div {:style {:display "grid"
-                  :gap "1em"
-                  :grid-template-columns "repeat(auto-fill, 500px)"}}
-    (video-list state (get-videos state))]])
+  (let [tags (->> (get-in videos [:lang-> lang :tag->ids])
+                  (filter (comp (approved-tags-for-user state) key)))
+        [as bs] (bifurcate-by #(< 4 (count (val %))) tags)]
+    [:div
+     (big-tags-list as)
+     (tags-list (map key bs))
+     [:div {:style {:display "grid"
+                    :gap "1em"
+                    :grid-template-columns "repeat(auto-fill, 500px)"}}
+      (video-list state (get-videos state))]]))
 
 (defn wrap-user-id [handler]
   (fn [req]
