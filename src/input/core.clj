@@ -726,6 +726,13 @@
    (video-list state (get-tag-videos state tag)
                :context (str "tag=" tag))])
 
+(defn needs-rating [{:keys [lang videos user comparisons] :as state}]
+  (let [yt-id (->> (get-videos state)
+                   (apply min-key #(:de/comparisons % 0))
+                   :yt/id)]
+    (watch state yt-id (->> (get-side-videos state yt-id)
+                            (remove #(contains? comparisons [(:id user) #{yt-id (:yt/id %)}]))))))
+
 (defn stats [{:keys [videos user] :as state}]
   [:div
    (hu/escape-html
@@ -898,6 +905,9 @@
                    (log! :judgement user-id :user-id user-id :yt-id (:yt-id params)
                          :judgement (keyword (:judgement params)))
                    (redirect "/find-level-cont" :see-other))}]
+         ["needs-rating"
+          {:get (fn [{:keys [state]}]
+                  (page2 needs-rating state))}]
          ["channel/:ch-id"
           {:get  (fn [{:keys [state path-params]}]
                    (page state (channel state (:ch-id path-params))))}]
