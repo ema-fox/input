@@ -639,7 +639,8 @@
                           (:de/times-finished video))])]
       [:div#tags
        (tags state yt-id)]
-      (judgement-box* yt-id)
+      (when-not (get-in state [:user :watch-log :id-> yt-id :judgement])
+        (judgement-box* yt-id))
       (comparison-box state yt-id)]
      [:div
       (video-list state side-videos opts)]]))
